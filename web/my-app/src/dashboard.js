@@ -9,6 +9,7 @@ import AdminReports from "./Adminreports.js";
 import DashboardSettings from "./Dashboardsettings.js";
 import { getApproved, getPending, getRejected } from "./projects.js";
 import { getReports } from "./reports.js";
+import { getAllMessages, markMessageRead, deleteMessage, getUnreadCount } from "./Messages.js";
 
 // ── Pie helpers ──────────────────────────────────────────────────────────────
 
@@ -122,6 +123,233 @@ function useIsMobile(breakpoint = 768) {
   return isMobile;
 }
 
+// ── MessagesInbox view ────────────────────────────────────────────────────────
+
+function MessagesInbox({ onBack }) {
+  const [messages, setMessages] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState(null);
+  const [deleting, setDeleting] = useState(null);
+
+  useEffect(() => {
+    loadMessages();
+  }, []);
+
+  const loadMessages = async () => {
+    setLoading(true);
+    const msgs = await getAllMessages();
+    setMessages(msgs);
+    setLoading(false);
+  };
+
+  const handleOpen = async (msg) => {
+    setSelected(msg);
+    if (!msg.read) {
+      await markMessageRead(msg.id);
+      setMessages((prev) => prev.map((m) => m.id === msg.id ? { ...m, read: true } : m));
+    }
+  };
+
+  const handleDelete = async (id, e) => {
+    e.stopPropagation();
+    setDeleting(id);
+    await deleteMessage(id);
+    setMessages((prev) => prev.filter((m) => m.id !== id));
+    if (selected?.id === id) setSelected(null);
+    setDeleting(null);
+  };
+
+  const formatDate = (ts) => {
+    if (!ts) return "";
+    const d = ts.toDate ? ts.toDate() : new Date(ts);
+    return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) +
+      " · " + d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  };
+
+  const unreadCount = messages.filter((m) => !m.read).length;
+
+  return (
+    <div style={{ display: "flex", height: "100vh", fontFamily: "'Poppins', sans-serif" }}>
+      {/* Sidebar */}
+      <aside style={{
+        width: "200px", backgroundColor: "#f0e5d8",
+        padding: "20px", borderRight: "2px solid rgba(111,78,55,0.25)",
+        display: "flex", flexDirection: "column", justifyContent: "space-between",
+        flexShrink: 0,
+      }}>
+        <div>
+          <h2 style={{ marginBottom: "20px", color: "#3B2F2F", fontSize: "15px", letterSpacing: "2px" }}>DASHBOARD</h2>
+          <button
+            onClick={onBack}
+            style={{
+              width: "100%", textAlign: "left", background: "none", border: "none",
+              padding: "10px 12px", borderRadius: "10px", cursor: "pointer",
+              color: "#6F4E37", fontWeight: "600", fontSize: "13px",
+              display: "flex", alignItems: "center", gap: "8px",
+              transition: "all 0.25s ease",
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "#e8d5bf"; e.currentTarget.style.transform = "translateX(5px)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "transparent"; e.currentTarget.style.transform = "translateX(0)"; }}
+          >
+            ← Back
+          </button>
+          <div style={{
+            marginTop: "12px", padding: "10px 12px", borderRadius: "10px",
+            backgroundColor: "#6F4E37", color: "#fdf6ee",
+            fontWeight: "700", fontSize: "13px",
+            display: "flex", alignItems: "center", gap: "8px",
+          }}>
+            ✉️ Messages
+            {unreadCount > 0 && (
+              <span style={{
+                backgroundColor: "#c0392b", color: "#fff",
+                borderRadius: "12px", padding: "1px 8px",
+                fontSize: "11px", fontWeight: "700", marginLeft: "auto",
+              }}>{unreadCount}</span>
+            )}
+          </div>
+        </div>
+      </aside>
+
+      {/* Main */}
+      <main style={{
+        flex: 1, background: "linear-gradient(to top, #c9a882, #f0e5d8)",
+        display: "flex", flexDirection: "column", overflow: "hidden",
+      }}>
+        <div style={{ padding: "28px 36px 16px" }}>
+          <h1 style={{ margin: 0, fontSize: "26px", fontFamily: "'Georgia', serif", color: "#3B1F0F" }}>
+            User Messages
+          </h1>
+          <p style={{ margin: "6px 0 0", fontSize: "13px", color: "#7a5a3a" }}>
+            {messages.length} total · {unreadCount} unread
+          </p>
+          <div style={{ marginTop: "12px", height: "2px", background: "linear-gradient(to right, #6F4E37, transparent)", borderRadius: "4px", width: "200px" }} />
+        </div>
+
+        <div style={{ flex: 1, display: "flex", overflow: "hidden", gap: "0" }}>
+          {/* Message list */}
+          <div style={{
+            width: selected ? "380px" : "100%", overflowY: "auto",
+            borderRight: selected ? "1px solid rgba(111,78,55,0.2)" : "none",
+            transition: "width 0.3s ease",
+            padding: "0 24px 24px",
+          }}>
+            {loading ? (
+              <div style={{ display: "flex", justifyContent: "center", paddingTop: "60px" }}>
+                <div style={{ width: "32px", height: "32px", border: "4px solid #c8a882", borderTopColor: "#6F4E37", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+                <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+              </div>
+            ) : messages.length === 0 ? (
+              <div style={{ textAlign: "center", paddingTop: "80px", color: "#9a7050", fontSize: "15px" }}>
+                <div style={{ fontSize: "48px", marginBottom: "16px" }}>📭</div>
+                No messages yet
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px", paddingTop: "8px" }}>
+                {messages.map((msg) => (
+                  <div
+                    key={msg.id}
+                    onClick={() => handleOpen(msg)}
+                    style={{
+                      background: selected?.id === msg.id
+                        ? "rgba(111,78,55,0.15)"
+                        : msg.read
+                          ? "rgba(255,255,255,0.5)"
+                          : "rgba(255,255,255,0.85)",
+                      border: selected?.id === msg.id
+                        ? "1px solid rgba(111,78,55,0.4)"
+                        : "1px solid rgba(111,78,55,0.15)",
+                      borderRadius: "12px",
+                      padding: "14px 16px",
+                      cursor: "pointer",
+                      transition: "all 0.2s ease",
+                      position: "relative",
+                    }}
+                    onMouseEnter={(e) => { if (selected?.id !== msg.id) e.currentTarget.style.background = "rgba(255,255,255,0.75)"; }}
+                    onMouseLeave={(e) => { if (selected?.id !== msg.id) e.currentTarget.style.background = msg.read ? "rgba(255,255,255,0.5)" : "rgba(255,255,255,0.85)"; }}
+                  >
+                    {!msg.read && (
+                      <span style={{
+                        position: "absolute", top: "16px", right: "16px",
+                        width: "8px", height: "8px", borderRadius: "50%",
+                        backgroundColor: "#6F4E37",
+                      }} />
+                    )}
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px" }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: msg.read ? "500" : "700", fontSize: "14px", color: "#3B2F2F", marginBottom: "2px" }}>
+                          {msg.name}
+                        </div>
+                        <div style={{ fontSize: "12px", color: "#7a5a3a", marginBottom: "6px" }}>{msg.email}</div>
+                        <div style={{ fontSize: "13px", color: "#5a4030", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {msg.message}
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "8px" }}>
+                      <span style={{ fontSize: "11px", color: "#9a7a5a" }}>{formatDate(msg.createdAt)}</span>
+                      <button
+                        onClick={(e) => handleDelete(msg.id, e)}
+                        disabled={deleting === msg.id}
+                        style={{
+                          background: "none", border: "none", cursor: "pointer",
+                          color: "#c0392b", fontSize: "13px", padding: "2px 6px",
+                          borderRadius: "6px", opacity: deleting === msg.id ? 0.4 : 0.6,
+                          transition: "opacity 0.2s",
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.opacity = "1"}
+                        onMouseLeave={(e) => e.currentTarget.style.opacity = deleting === msg.id ? "0.4" : "0.6"}
+                        title="Delete message"
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Message detail */}
+          {selected && (
+            <div style={{ flex: 1, overflowY: "auto", padding: "24px 36px" }}>
+              <div style={{
+                background: "rgba(255,255,255,0.7)", backdropFilter: "blur(10px)",
+                borderRadius: "16px", border: "1px solid rgba(111,78,55,0.2)",
+                padding: "32px", boxShadow: "0 4px 20px rgba(0,0,0,0.08)",
+                maxWidth: "600px",
+              }}>
+                <button
+                  onClick={() => setSelected(null)}
+                  style={{
+                    background: "none", border: "none", cursor: "pointer",
+                    color: "#6F4E37", fontSize: "13px", fontWeight: "600",
+                    marginBottom: "20px", padding: "0", display: "flex", alignItems: "center", gap: "6px",
+                  }}
+                >← Close</button>
+                <div style={{ marginBottom: "24px" }}>
+                  <div style={{ fontSize: "20px", fontWeight: "700", color: "#3B1F0F", marginBottom: "4px" }}>
+                    {selected.name}
+                  </div>
+                  <div style={{ fontSize: "14px", color: "#6F4E37" }}>{selected.email}</div>
+                  <div style={{ fontSize: "12px", color: "#9a7a5a", marginTop: "6px" }}>{formatDate(selected.createdAt)}</div>
+                </div>
+                <div style={{ height: "1px", background: "rgba(111,78,55,0.15)", marginBottom: "24px" }} />
+                <p style={{
+                  fontSize: "15px", color: "#3B2F2F", lineHeight: "1.8",
+                  margin: 0, whiteSpace: "pre-wrap",
+                }}>
+                  {selected.message}
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      </main>
+    </div>
+  );
+}
+
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 
 function Dashboard() {
@@ -144,6 +372,7 @@ function Dashboard() {
   const [reportsCount, setReportsCount] = useState(0);
   const [reviewPct, setReviewPct] = useState(0);
   const [reportPct, setReportPct] = useState(0);
+  const [unreadMessages, setUnreadMessages] = useState(0);
 
   // Close sidebar when switching to desktop
   useEffect(() => {
@@ -152,8 +381,8 @@ function Dashboard() {
 
   useEffect(() => {
     const fetchData = async () => {
-      const [approved, pending, rejected, reports] = await Promise.all([
-        getApproved(), getPending(), getRejected(), getReports("admin"),
+      const [approved, pending, rejected, reports, unread] = await Promise.all([
+        getApproved(), getPending(), getRejected(), getReports("admin"), getUnreadCount(),
       ]);
 
       const approvedArr = Array.isArray(approved) ? approved : [];
@@ -161,19 +390,16 @@ function Dashboard() {
       const rejectedArr = Array.isArray(rejected) ? rejected : [];
       const reportsArr  = Array.isArray(reports)  ? reports  : [];
 
-      // Dynamic counts
       setPendingCount(pendingArr.length);
       setReportsCount(reportsArr.length);
+      setUnreadMessages(unread);
 
-      // Review bar: نسبة الـ pending من (approved + pending)
       const totalReview = approvedArr.length + pendingArr.length;
       setReviewPct(totalReview > 0 ? Math.round((pendingArr.length / totalReview) * 100) : 0);
 
-      // Report bar: نسبة الـ reports من إجمالي الـ projects
       const totalAll = approvedArr.length + pendingArr.length + rejectedArr.length;
       setReportPct(totalAll > 0 ? Math.round((reportsArr.length / totalAll) * 100) : 0);
 
-      // Chart
       const all = [...approvedArr, ...pendingArr, ...rejectedArr];
       const categoryMap = {};
       all.forEach((p) => {
@@ -191,16 +417,18 @@ function Dashboard() {
   }, []);
 
   // ── view routing ──────────────────────────────────────────────────────────
-  if (view === "review")   return <ReviewProjects onBack={() => setView("main")} />;
-  if (view === "users")    return <Users onBack={() => setView("main")} />;
-  if (view === "projects") return <Projects onBack={() => setView("main")} />;
-  if (view === "reports")  return <AdminReports onBack={() => setView("main")} />;
-  if (view === "settings") return <DashboardSettings onBack={() => setView("main")} />;
+  if (view === "review")    return <ReviewProjects onBack={() => setView("main")} />;
+  if (view === "users")     return <Users onBack={() => setView("main")} />;
+  if (view === "projects")  return <Projects onBack={() => setView("main")} />;
+  if (view === "reports")   return <AdminReports onBack={() => setView("main")} />;
+  if (view === "settings")  return <DashboardSettings onBack={() => setView("main")} />;
+  if (view === "messages")  return <MessagesInbox onBack={() => setView("main")} />;
 
   const lightenColor = (hex) => ({
     "#eddcc8": "#f5ece0",
     "#e5ceb5": "#e8caa8",
     "#dcc4a8": "#dbbfa0",
+    "#d4bfa0": "#d8c4a8",
   }[hex] || hex);
 
   const getBoxStyle = (id, baseColor) => ({
@@ -233,6 +461,7 @@ function Dashboard() {
     { label: "WEBSITE VIEW", action: () => navigate("/home") },
     { label: "ALL PROJECTS", action: () => setView("projects") },
     { label: "USERS",        action: () => setView("users") },
+    { label: "MESSAGES",     action: () => setView("messages") },
     { label: "SETTINGS",     action: () => setView("settings") },
   ];
 
@@ -263,8 +492,20 @@ function Dashboard() {
                 boxShadow: hoveredNav === label ? "0 4px 12px rgba(0,0,0,0.15)" : "none",
                 transition: "all 0.3s ease",
                 fontWeight: hoveredNav === label ? "bold" : "normal",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
               }}
-            >{label}</li>
+            >
+              {label}
+              {label === "MESSAGES" && unreadMessages > 0 && (
+                <span style={{
+                  backgroundColor: "#c0392b", color: "#fff",
+                  borderRadius: "12px", padding: "1px 8px",
+                  fontSize: "11px", fontWeight: "700",
+                }}>{unreadMessages}</span>
+              )}
+            </li>
           ))}
         </ul>
       </div>
@@ -380,8 +621,8 @@ function Dashboard() {
         <div style={{
           display: "flex",
           flexDirection: isMobile ? "column" : "row",
-          padding: isMobile ? "0 16px 24px" : "0 60px 30px",
-          gap: isMobile ? "16px" : "30px",
+          padding: isMobile ? "0 16px 24px" : "0 40px 30px",
+          gap: isMobile ? "16px" : "20px",
           flex: 1,
           alignItems: isMobile ? "stretch" : "center",
         }}>
@@ -392,7 +633,7 @@ function Dashboard() {
             onClick={() => setView("review")}>
             <div style={{ display: "flex", alignItems: "center", gap: "8px", overflow: "hidden" }}>
               <span style={{ fontSize: isMobile ? "18px" : "22px", flexShrink: 0 }}>📋</span>
-              <span style={{ fontSize: isMobile ? "16px" : "22px", fontWeight: "700", letterSpacing: "0.5px", color: "#3B1F0F", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>PROJECTS TO REVIEW</span>
+              <span style={{ fontSize: isMobile ? "14px" : "18px", fontWeight: "700", letterSpacing: "0.5px", color: "#3B1F0F", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>PROJECTS TO REVIEW</span>
             </div>
             <div style={{ fontSize: isMobile ? "44px" : "56px", fontWeight: "800", color: "#3B2F2F", lineHeight: 1, textAlign: "center" }}>
               {pendingCount}
@@ -411,7 +652,7 @@ function Dashboard() {
             onClick={() => setView("reports")}>
             <div style={{ display: "flex", alignItems: "center", gap: "8px", overflow: "hidden" }}>
               <span style={{ fontSize: isMobile ? "18px" : "22px", flexShrink: 0 }}>📝</span>
-              <span style={{ fontSize: isMobile ? "16px" : "22px", fontWeight: "700", letterSpacing: "0.5px", color: "#3B1F0F", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>PROJECTS TO REPORT</span>
+              <span style={{ fontSize: isMobile ? "14px" : "18px", fontWeight: "700", letterSpacing: "0.5px", color: "#3B1F0F", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>PROJECTS TO REPORT</span>
             </div>
             <div style={{ fontSize: isMobile ? "44px" : "56px", fontWeight: "800", color: "#3B2F2F", lineHeight: 1, textAlign: "center" }}>
               {reportsCount}
@@ -424,10 +665,35 @@ function Dashboard() {
             </div>
           </div>
 
-          {/* Box 3 — Distribution */}
+          {/* Box 3 — Messages */}
           <div style={getBoxStyle(3, "#dcc4a8")}
-            onMouseEnter={() => setHoveredBox(3)} onMouseLeave={() => setHoveredBox(null)}>
-            <p style={{ margin: "0", fontSize: isMobile ? "16px" : "22px", fontWeight: "bold", color: "#3B1F0F" }}>
+            onMouseEnter={() => setHoveredBox(3)} onMouseLeave={() => setHoveredBox(null)}
+            onClick={() => setView("messages")}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", overflow: "hidden" }}>
+              <span style={{ fontSize: isMobile ? "18px" : "22px", flexShrink: 0 }}>✉️</span>
+              <span style={{ fontSize: isMobile ? "14px" : "18px", fontWeight: "700", letterSpacing: "0.5px", color: "#3B1F0F", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>USER MESSAGES</span>
+            </div>
+            <div style={{ position: "relative", textAlign: "center" }}>
+              <div style={{ fontSize: isMobile ? "44px" : "56px", fontWeight: "800", color: "#3B2F2F", lineHeight: 1 }}>
+                {unreadMessages}
+              </div>
+              <div style={{ fontSize: "12px", color: "#5C4033", marginTop: "4px" }}>unread messages</div>
+            </div>
+            <div style={{
+              background: "rgba(111,78,55,0.1)", borderRadius: "8px", padding: "10px 14px",
+              display: "flex", alignItems: "center", gap: "8px",
+            }}>
+              <span style={{ fontSize: "14px" }}>📬</span>
+              <span style={{ fontSize: "12px", color: "#5C4033", fontWeight: "600" }}>
+                Click to open inbox
+              </span>
+            </div>
+          </div>
+
+          {/* Box 4 — Distribution */}
+          <div style={getBoxStyle(4, "#d4bfa0")}
+            onMouseEnter={() => setHoveredBox(4)} onMouseLeave={() => setHoveredBox(null)}>
+            <p style={{ margin: "0", fontSize: isMobile ? "14px" : "18px", fontWeight: "bold", color: "#3B1F0F" }}>
               Projects Distribution
             </p>
 
@@ -449,7 +715,7 @@ function Dashboard() {
             ) : (
               <>
                 <div style={{ display: "flex", justifyContent: "center", alignItems: "center", flex: 1, position: "relative" }}>
-                  <svg width={isMobile ? "140" : "170"} height={isMobile ? "140" : "170"} viewBox="0 0 140 140">
+                  <svg width={isMobile ? "140" : "160"} height={isMobile ? "140" : "160"} viewBox="0 0 140 140">
                     {slices.map((slice) => {
                       const isHovered = hoveredSlice === slice.id;
                       const midRad = ((slice.midAngle - 90) * Math.PI) / 180;
