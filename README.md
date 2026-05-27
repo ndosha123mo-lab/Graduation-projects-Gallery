@@ -3,7 +3,6 @@
 ## Project Structure
 - web
 - mobile
-- dashboard
 - docs
 
 ## Branching Strategy
